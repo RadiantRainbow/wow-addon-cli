@@ -1,5 +1,10 @@
 # wow-addon-cli
 
+## Usage
+
+```
+```
+
 ## Other Licenses
 
 `copydir.go`: https://github.com/hashicorp/terraform/blob/v0.13.7/LICENSE

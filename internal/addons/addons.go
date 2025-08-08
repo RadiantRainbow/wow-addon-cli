@@ -1,8 +1,7 @@
-package main
+package addons
 
 import (
 	"bufio"
-	"flag"
 	"fmt"
 	"io"
 	"io/fs"
@@ -15,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/BurntSushi/toml"
+	"github.com/RadiantRainbow/wow-addon-cli/internal/util"
 	"github.com/go-git/go-git/v6"
 )
 
@@ -66,7 +65,7 @@ func (c Conf) DestZip(entry AddonEntry) (string, error) {
 	return path.Join(c.DownloadPath, entry.Name) + ".zip", nil
 }
 
-func fetchEntry(conf Conf, entry AddonEntry) ([]string, error) {
+func FetchEntry(conf Conf, entry AddonEntry) ([]string, error) {
 	cleanupPaths := []string{}
 	destDir, err := conf.DestDir(entry)
 	if err != nil {
@@ -135,7 +134,7 @@ func fetchEntry(conf Conf, entry AddonEntry) ([]string, error) {
 			return cleanupPaths, err
 		}
 
-		err = unzip(writePath, destDir)
+		err = util.Unzip(writePath, destDir)
 		if err != nil {
 			return cleanupPaths, err
 		}
@@ -146,7 +145,7 @@ func fetchEntry(conf Conf, entry AddonEntry) ([]string, error) {
 	return cleanupPaths, err
 }
 
-func unpackEntry(conf Conf, entry AddonEntry) error {
+func UnpackEntry(conf Conf, entry AddonEntry) error {
 	log.Printf("Unpacking %+v", entry)
 	destDir, err := conf.DestDir(entry)
 	if err != nil {
@@ -277,7 +276,7 @@ func unpackEntry(conf Conf, entry AddonEntry) error {
 			return err
 		}
 		log.Printf("Copying %v to %v", d, destAddonDir)
-		err = CopyDir(destAddonDir, d)
+		err = util.CopyDir(destAddonDir, d)
 		if err != nil {
 			return err
 		}
@@ -286,7 +285,7 @@ func unpackEntry(conf Conf, entry AddonEntry) error {
 	return nil
 }
 
-func cleanDownload(conf Conf, cleanupPaths []string) error {
+func CleanDownload(conf Conf, cleanupPaths []string) error {
 	for _, d := range cleanupPaths {
 		log.Printf("Cleaning up %v", d)
 		err := os.RemoveAll(d)
@@ -298,75 +297,34 @@ func cleanDownload(conf Conf, cleanupPaths []string) error {
 	return nil
 }
 
-func main() {
-	flagConfig := flag.String("config", "", "config file")
-	flagDownloadPath := flag.String("dlpath", ".downloads", "download path")
-	flagBackupPath := flag.String("backuppath", ".backups", "download path")
-	flagAddonsPath := flag.String("addonspath", ".", "path to AddOns")
-	flag.Parse()
-
-	confData, err := os.ReadFile(*flagConfig)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	var conf Conf
-	_, err = toml.Decode(string(confData), &conf)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	conf.AddonsPath, err = filepath.Abs(*flagAddonsPath)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	if filepath.Base(conf.AddonsPath) != "AddOns" {
-		log.Fatal("Addons path %v does not look like an addons path. Expecting 'AddOns'", conf.AddonsPath)
-	}
-
-	// change directories to AddOns so relative default paths work
-	err = os.Chdir(conf.AddonsPath)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	conf.BackupPath, err = filepath.Abs(*flagBackupPath)
-	if err != nil {
-		log.Fatal(err)
-	}
-	conf.DownloadPath, err = filepath.Abs(*flagDownloadPath)
-	if err != nil {
-		log.Fatal(err)
-	}
-
+func Execute(conf Conf) error {
 	for _, entry := range conf.Addons {
 		log.Printf("Processing entry: %+v", entry)
 
 		// normalize name from Git and other keys
 		err := entry.HydrateName()
 		if err != nil {
-			log.Fatalf("ERROR: entry name is empty %+v", entry)
+			return fmt.Errorf("error hydrating name %+v", entry)
 		}
 
 		if entry.Name == "" {
-			log.Fatalf("ERROR: entry name is empty %+v", entry)
-			continue
+			return fmt.Errorf("entry name is empty %+v", entry)
 		}
 
-		cleanUpPaths, err := fetchEntry(conf, entry)
+		cleanUpPaths, err := FetchEntry(conf, entry)
 		if err != nil {
 			log.Printf("error fetching entry: %+v, error: %v", entry, err)
 			continue
 		}
 
-		defer cleanDownload(conf, cleanUpPaths)
+		defer CleanDownload(conf, cleanUpPaths)
 
-		err = unpackEntry(conf, entry)
+		err = UnpackEntry(conf, entry)
 		if err != nil {
 			log.Printf("WARN: error unpacking entry: %+v, error: %v", entry, err)
 			continue
 		}
 
 	}
+	return nil
 }

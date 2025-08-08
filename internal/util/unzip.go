@@ -1,4 +1,4 @@
-package main
+package util
 
 import (
 	"archive/zip"
@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 )
 
-func unzip(zipFilePath, destDir string) error {
+func Unzip(zipFilePath, destDir string) error {
 	r, err := zip.OpenReader(zipFilePath)
 	if err != nil {
 		return err
