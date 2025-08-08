@@ -1,7 +1,6 @@
 package main
 
 import (
-	"archive/zip"
 	"bufio"
 	"flag"
 	"fmt"
@@ -67,51 +66,19 @@ func (c Conf) DestZip(entry AddonEntry) (string, error) {
 	return path.Join(c.DownloadPath, entry.Name) + ".zip", nil
 }
 
-func unzip(zipFilePath, destDir string) error {
-	r, err := zip.OpenReader(zipFilePath)
+func fetchEntry(conf Conf, entry AddonEntry) ([]string, error) {
+	cleanupPaths := []string{}
+	destDir, err := conf.DestDir(entry)
 	if err != nil {
-		return err
+		return cleanupPaths, err
 	}
-	defer r.Close()
 
-	for _, f := range r.File {
-		filePath := filepath.Join(destDir, f.Name)
+	cleanupPaths = append(cleanupPaths, destDir)
 
-		if f.FileInfo().IsDir() {
-			os.MkdirAll(filePath, os.ModePerm)
-			continue
-		}
-
-		if err := os.MkdirAll(filepath.Dir(filePath), os.ModePerm); err != nil {
-			log.Fatal(err)
-		}
-
-		outFile, err := os.Create(filePath)
-		if err != nil {
-			return err
-		}
-		defer outFile.Close()
-
-		rc, err := f.Open()
-		if err != nil {
-			return err
-		}
-		defer rc.Close()
-
-		_, err = io.Copy(outFile, rc)
-		if err != nil {
-			return err
-		}
-		log.Printf("Extracted: %sn", filePath)
-	}
-	return nil
-}
-
-func fetchEntry(conf Conf, entry AddonEntry) error {
 	if entry.Git != "" {
-		clonePath, err := conf.DestDir(entry)
+		clonePath := destDir
 		if err != nil {
-			return err
+			return cleanupPaths, err
 		}
 
 		log.Printf("Entry cloning git: %s to %s", entry.Git, clonePath)
@@ -124,10 +91,10 @@ func fetchEntry(conf Conf, entry AddonEntry) error {
 		})
 
 		if err != nil {
-			return err
+			return cleanupPaths, err
 		}
 
-		return nil
+		return cleanupPaths, err
 	}
 
 	if entry.Zip != "" {
@@ -137,45 +104,46 @@ func fetchEntry(conf Conf, entry AddonEntry) error {
 
 		resp, err := client.Get(entry.Zip)
 		if err != nil {
-			return err
+			return cleanupPaths, err
 		}
 		defer resp.Body.Close()
 
 		writePath, err := conf.DestZip(entry)
 		if err != nil {
-			return err
+			return cleanupPaths, err
 		}
 		fp, err := os.Create(writePath)
 		if err != nil {
-			return err
+			return cleanupPaths, err
 		}
 		defer fp.Close()
 
 		log.Printf("Writing %s to %s", entry.Zip, writePath)
 		writtenBytes, err := io.Copy(fp, resp.Body)
 		if err != nil {
-			return err
+			return cleanupPaths, err
 		}
 		log.Printf("Wrote %d bytes", writtenBytes)
+		cleanupPaths = append(cleanupPaths, writePath)
 
 		destDir, err := conf.DestDir(entry)
 		if err != nil {
-			return err
+			return cleanupPaths, err
 		}
 		err = os.MkdirAll(destDir, 0755)
 		if err != nil {
-			return err
+			return cleanupPaths, err
 		}
 
 		err = unzip(writePath, destDir)
 		if err != nil {
-			return err
+			return cleanupPaths, err
 		}
 		log.Println("Extraction complete.")
 	}
 
 	// TODO error
-	return nil
+	return cleanupPaths, err
 }
 
 func unpackEntry(conf Conf, entry AddonEntry) error {
@@ -283,6 +251,10 @@ func unpackEntry(conf Conf, entry AddonEntry) error {
 		}
 	}
 
+	if minDepth == -1 {
+		return fmt.Errorf("Could not deterine mindepth")
+	}
+
 	for d, depth := range unpackCandidateDepths {
 		if depth == minDepth {
 			toUnpack = append(toUnpack, d)
@@ -314,7 +286,15 @@ func unpackEntry(conf Conf, entry AddonEntry) error {
 	return nil
 }
 
-func cleanDownload(conf Conf, entry AddonEntry) error {
+func cleanDownload(conf Conf, cleanupPaths []string) error {
+	for _, d := range cleanupPaths {
+		log.Printf("Cleaning up %v", d)
+		err := os.RemoveAll(d)
+		if err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -374,13 +354,13 @@ func main() {
 			continue
 		}
 
-		err = fetchEntry(conf, entry)
+		cleanUpPaths, err := fetchEntry(conf, entry)
 		if err != nil {
 			log.Printf("error fetching entry: %+v, error: %v", entry, err)
 			continue
 		}
 
-		defer cleanDownload(conf, entry)
+		defer cleanDownload(conf, cleanUpPaths)
 
 		err = unpackEntry(conf, entry)
 		if err != nil {
