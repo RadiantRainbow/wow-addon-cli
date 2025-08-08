@@ -303,6 +303,16 @@ func RemoveNonBlizDirs(conf Conf) error {
 		return err
 	}
 	for _, dir := range matches {
+		isDir, err := util.IsDirectory(dir)
+		if err != nil {
+			return err
+		}
+
+		// only clean up dirs
+		if !isDir {
+			continue
+		}
+
 		base := filepath.Base(dir)
 		if strings.HasPrefix(base, "Blizzard_") {
 			continue
@@ -311,7 +321,7 @@ func RemoveNonBlizDirs(conf Conf) error {
 			continue
 		}
 		log.Printf("Removing non bliz dir %v", dir)
-		err := os.RemoveAll(dir)
+		err = os.RemoveAll(dir)
 		if err != nil {
 			return err
 		}
