@@ -11,7 +11,7 @@ import (
 )
 
 func main() {
-	flagConfig := flag.String("config", "", "config file")
+	flagConfig := flag.String("config", "config.toml", "config file")
 	flagDownloadPath := flag.String("dlpath", ".downloads", "download path")
 	flagBackupPath := flag.String("backuppath", ".backups", "download path")
 	flagAddonsPath := flag.String("addonspath", ".", "path to AddOns")
