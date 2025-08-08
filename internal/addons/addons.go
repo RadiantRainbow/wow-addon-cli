@@ -18,6 +18,8 @@ import (
 	"github.com/go-git/go-git/v6"
 )
 
+const SEP = string(filepath.Separator)
+
 type AddonEntry struct {
 	Name   string
 	Git    string
@@ -52,6 +54,7 @@ type Conf struct {
 	DownloadPath string
 	BackupPath   string
 	AddonsPath   string
+	PrecleanBliz bool
 	Addons       []AddonEntry `toml:"addons"`
 }
 
@@ -76,10 +79,6 @@ func FetchEntry(conf Conf, entry AddonEntry) ([]string, error) {
 
 	if entry.Git != "" {
 		clonePath := destDir
-		if err != nil {
-			return cleanupPaths, err
-		}
-
 		log.Printf("Entry cloning git: %s to %s", entry.Git, clonePath)
 
 		_, err = git.PlainClone(clonePath, &git.CloneOptions{
@@ -138,11 +137,12 @@ func FetchEntry(conf Conf, entry AddonEntry) ([]string, error) {
 		if err != nil {
 			return cleanupPaths, err
 		}
+
 		log.Println("Extraction complete.")
+		return cleanupPaths, nil
 	}
 
-	// TODO error
-	return cleanupPaths, err
+	return cleanupPaths, fmt.Errorf("nothing to fetch")
 }
 
 func UnpackEntry(conf Conf, entry AddonEntry) error {
@@ -235,7 +235,7 @@ func UnpackEntry(conf Conf, entry AddonEntry) error {
 
 	unpackCandidateDepths := map[string]int{}
 	for _, d := range unpackCandidateDirs {
-		components := strings.Split(filepath.Clean(d), string(filepath.Separator))
+		components := strings.Split(filepath.Clean(d), SEP)
 		unpackCandidateDepths[d] = len(components)
 	}
 
@@ -287,7 +287,7 @@ func UnpackEntry(conf Conf, entry AddonEntry) error {
 
 func CleanDownload(conf Conf, cleanupPaths []string) error {
 	for _, d := range cleanupPaths {
-		log.Printf("Cleaning up %v", d)
+		log.Printf("Removing dir for clean up %v", d)
 		err := os.RemoveAll(d)
 		if err != nil {
 			return err
@@ -297,7 +297,35 @@ func CleanDownload(conf Conf, cleanupPaths []string) error {
 	return nil
 }
 
+func RemoveNonBlizDirs(conf Conf) error {
+	matches, err := filepath.Glob(conf.AddonsPath + SEP + "*")
+	if err != nil {
+		return err
+	}
+	for _, dir := range matches {
+		base := filepath.Base(dir)
+		if strings.HasPrefix(base, "Blizzard_") {
+			continue
+		}
+		if strings.HasPrefix(base, ".") {
+			continue
+		}
+		log.Printf("Removing non bliz dir %v", dir)
+		err := os.RemoveAll(dir)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func Execute(conf Conf) error {
+	err := RemoveNonBlizDirs(conf)
+	if err != nil {
+		return fmt.Errorf("error cleaning bliz dirs %+v", err)
+	}
+
 	for _, entry := range conf.Addons {
 		log.Printf("Processing entry: %+v", entry)
 

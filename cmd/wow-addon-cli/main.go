@@ -15,6 +15,7 @@ func main() {
 	flagDownloadPath := flag.String("dlpath", ".downloads", "download path")
 	flagBackupPath := flag.String("backuppath", ".backups", "download path")
 	flagAddonsPath := flag.String("addonspath", ".", "path to AddOns")
+	flagNoPreclean := flag.Bool("nopreclean", true, "skip cleaning non Blizzard addons before fetching")
 	flag.Parse()
 
 	confData, err := os.ReadFile(*flagConfig)
@@ -51,6 +52,12 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	preCleanBliz := true
+	if *flagNoPreclean {
+		preCleanBliz = false
+	}
+	conf.PrecleanBliz = preCleanBliz
 
 	err = addons.Execute(conf)
 	if err != nil {
