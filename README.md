@@ -28,6 +28,7 @@ $ wow-addon-cli
 ## TODO
 
 - [ ] only clean up "managed" directories
+- [ ] pretty logging
 - [ ] implement backups
 
 ## Other Licenses
