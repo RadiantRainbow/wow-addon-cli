@@ -1,8 +1,12 @@
 # wow-addon-cli
 
+A simple addon manager.
+
+**WARNING** back up your existing "AddOns" directory before use. This tool assumes it's the only thing managing your addons. It will delete all non-Blizzard prefixed directories before running.
+
 ## Usage
 
-Write a `config.toml`, put it in `Addons` dir
+Write a `config.toml`, put it in `AddOns` dir
 ```
 [[addons]]
 git = "https://github.com/hypernormalisation/SwedgeTimer.git"
@@ -23,7 +27,7 @@ $ wow-addon-cli
 
 ## TODO
 
-- [ ] name config checking
+- [ ] only clean up "managed" directories
 - [ ] implement backups
 
 ## Other Licenses
