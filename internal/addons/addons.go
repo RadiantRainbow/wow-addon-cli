@@ -70,8 +70,14 @@ func sanitizeTitle(title string) string {
 	// Remove color strings
 	// ex.
 	// |cff33ffccpf|cffffffffUI
+	// |cffff8000WOW-HC.com|r
 	colorRegex := regexp.MustCompile(`\|cff[a-zA-Z0-9]{3,6}`)
-	return colorRegex.ReplaceAllString(title, "")
+	colorRegexReset := regexp.MustCompile(`\|r`)
+	t := title
+	t = colorRegex.ReplaceAllString(t, "")
+	t = colorRegexReset.ReplaceAllString(t, "")
+
+	return t
 }
 
 func FetchEntry(conf Conf, entry AddonEntry) ([]string, error) {
@@ -213,8 +219,6 @@ func UnpackEntry(conf Conf, entry AddonEntry) error {
 			return nil
 		}
 
-		title = strings.ReplaceAll(title, " ", "_")
-
 		if containsTitle && containsInterface {
 			log.Printf("Found valid TOC file %v", path)
 
@@ -290,7 +294,11 @@ func UnpackEntry(conf Conf, entry AddonEntry) error {
 	log.Printf("To unpack dirs %+v", toUnpack)
 	for _, toc := range toUnpack {
 		tocDir := filepath.Dir(toc.TOCFilePath)
-		destAddonDir := filepath.Join(conf.AddonsPath, toc.Title)
+		// the dest addon dir name and the toc file without extension must match
+		// Something.toc -> AddOns/Something
+		tocBaseFile := filepath.Base(toc.TOCFilePath)
+		destAddonName := strings.TrimSuffix(tocBaseFile, filepath.Ext(tocBaseFile))
+		destAddonDir := filepath.Join(conf.AddonsPath, destAddonName)
 
 		log.Printf("Removing dest dir %v", destAddonDir)
 		err := os.RemoveAll(destAddonDir)
