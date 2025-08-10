@@ -44,11 +44,16 @@ func (entry *AddonEntry) Hydrate() error {
 }
 
 type Conf struct {
-	DownloadPath string
-	BackupPath   string
-	AddonsPath   string
-	PrecleanBliz bool
-	Addons       []AddonEntry `toml:"addons"`
+	DownloadPath      string
+	BackupPath        string
+	AddonsPath        string
+	PrecleanBliz      bool
+	SkipCleanPrefixes []string
+	Addons            []AddonEntry `toml:"addons"`
+}
+
+var DefaultSkipCleanPrefixes = []string{
+	"Blizzard_",
 }
 
 // Where to clone a git repo. Also the final directory of the decompressed archive
@@ -59,6 +64,14 @@ func (c Conf) DestDir(entry AddonEntry) (string, error) {
 
 func (c Conf) DestZip(entry AddonEntry) (string, error) {
 	return path.Join(c.DownloadPath, entry.UniqueName) + ".zip", nil
+}
+
+func sanitizeTitle(title string) string {
+	// Remove color strings
+	// ex.
+	// |cff33ffccpf|cffffffffUI
+	colorRegex := regexp.MustCompile(`\|cff[a-zA-Z0-9]{3,6}`)
+	return colorRegex.ReplaceAllString(title, "")
 }
 
 func FetchEntry(conf Conf, entry AddonEntry) ([]string, error) {
@@ -186,7 +199,7 @@ func UnpackEntry(conf Conf, entry AddonEntry) error {
 			matches := regexTitle.FindStringSubmatch(line)
 			if matches != nil {
 				containsTitle = true
-				title = matches[1]
+				title = sanitizeTitle(matches[1])
 			}
 
 			if containsInterface == false && regexInterface.MatchString(line) {
@@ -329,12 +342,25 @@ func RemoveNonBlizDirs(conf Conf) error {
 		}
 
 		base := filepath.Base(dir)
-		if strings.HasPrefix(base, "Blizzard_") {
-			continue
+		shouldSkip := false
+		for _, prefix := range DefaultSkipCleanPrefixes {
+			if strings.HasPrefix(base, prefix) {
+				shouldSkip = true
+			}
+		}
+		for _, prefix := range conf.SkipCleanPrefixes {
+			if strings.HasPrefix(base, prefix) {
+				shouldSkip = true
+			}
 		}
 		if strings.HasPrefix(base, ".") {
+			shouldSkip = true
+		}
+
+		if shouldSkip {
 			continue
 		}
+
 		log.Printf("Removing non bliz dir %v", dir)
 		err = os.RemoveAll(dir)
 		if err != nil {

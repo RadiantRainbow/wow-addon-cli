@@ -59,6 +59,7 @@ func main() {
 	}
 	conf.PrecleanBliz = preCleanBliz
 
+	log.Printf("Running with conf: %+v", conf)
 	err = addons.Execute(conf)
 	if err != nil {
 		log.Fatal(err)
