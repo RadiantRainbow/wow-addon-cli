@@ -34,8 +34,9 @@ func main() {
 		log.Fatal(err)
 	}
 
-	if filepath.Base(conf.AddonsPath) != "AddOns" {
-		log.Fatalf("Addons path %v does not look like an addons path. Expecting 'AddOns'", conf.AddonsPath)
+	basenameAddonsPath := filepath.Base(conf.AddonsPath)
+	if !(basenameAddonsPath == "AddOns" || basenameAddonsPath == "Addons") {
+		log.Fatalf("Addons path %v does not look like an addons path. Expecting 'AddOns' or 'Addons'", conf.AddonsPath)
 	}
 
 	// change directories to AddOns so relative default paths work
