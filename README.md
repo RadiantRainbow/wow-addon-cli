@@ -2,6 +2,8 @@
 
 A CLI World of Warcraft addon manager.
 
+**WARNING:** back up your Addons dir before using this tool!
+
 ## Usage
 
 Write a `config.toml`, put it in `AddOns` dir
