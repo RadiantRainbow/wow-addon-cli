@@ -28,9 +28,10 @@ $ cd AddOns
 $ wow-addon-cli
 ```
 
+Use `-debug` flag for debug logs.
+
 ## TODO
 
-- [ ] pretty logging
 - [ ] implement backups
 
 ## Other Licenses

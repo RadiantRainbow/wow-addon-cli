@@ -2,12 +2,14 @@ package main
 
 import (
 	"flag"
-	"log"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/BurntSushi/toml"
 	"github.com/RadiantRainbow/wow-addon-cli/internal/addons"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 func main() {
@@ -16,42 +18,53 @@ func main() {
 	flagBackupPath := flag.String("backuppath", ".backups", "download path")
 	flagAddonsPath := flag.String("addonspath", ".", "path to AddOns")
 	flagNoPreclean := flag.Bool("nopreclean", true, "skip cleaning non Blizzard addons before fetching")
+	flagDebug := flag.Bool("debug", false, "sets log level to debug")
 	flag.Parse()
+
+	consoleWriter := zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.Kitchen, NoColor: true}
+
+	log.Logger = log.Output(consoleWriter)
+
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	if *flagDebug {
+		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	}
 
 	confData, err := os.ReadFile(*flagConfig)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal().Err(err)
 	}
 
 	var conf addons.Conf
 	_, err = toml.Decode(string(confData), &conf)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal().Err(err)
 	}
 
 	conf.AddonsPath, err = filepath.Abs(*flagAddonsPath)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal().Err(err)
 	}
 
 	basenameAddonsPath := filepath.Base(conf.AddonsPath)
 	if !(basenameAddonsPath == "AddOns" || basenameAddonsPath == "Addons") {
-		log.Fatalf("Addons path %v does not look like an addons path. Expecting 'AddOns' or 'Addons'", conf.AddonsPath)
+		log.Fatal().Err(err).Msgf("Addons path %v does not look like an addons path. Expecting 'AddOns' or 'Addons'", conf.AddonsPath)
+
 	}
 
 	// change directories to AddOns so relative default paths work
 	err = os.Chdir(conf.AddonsPath)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal().Err(err)
 	}
 
 	conf.BackupPath, err = filepath.Abs(*flagBackupPath)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal().Err(err)
 	}
 	conf.DownloadPath, err = filepath.Abs(*flagDownloadPath)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal().Err(err)
 	}
 
 	preCleanBliz := true
@@ -60,9 +73,9 @@ func main() {
 	}
 	conf.PrecleanBliz = preCleanBliz
 
-	log.Printf("Running with conf: %+v", conf)
+	log.Info().Msgf("Running with conf: %+v", conf)
 	err = addons.Execute(conf)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal().Err(err)
 	}
 }

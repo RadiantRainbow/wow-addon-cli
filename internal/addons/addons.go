@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"log"
 	"net/http"
 	"os"
 	"path"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/RadiantRainbow/wow-addon-cli/internal/util"
 	"github.com/go-git/go-git/v6"
+	"github.com/rs/zerolog/log"
 	"github.com/segmentio/ksuid"
 )
 
@@ -92,16 +92,18 @@ func FetchEntry(conf Conf, entry AddonEntry) ([]string, error) {
 
 	if entry.Git != "" {
 		clonePath := destDir
-		log.Printf("Entry cloning git: %s to %s", entry.Git, clonePath)
+		log.Debug().Msgf("Entry cloning git: %s to %s", entry.Git, clonePath)
 
+		progressBuf := new(strings.Builder)
 		_, err = git.PlainClone(clonePath, &git.CloneOptions{
 			URL:      entry.Git,
 			Depth:    1,
 			Tags:     git.NoTags,
-			Progress: os.Stdout,
+			Progress: progressBuf,
 		})
 
 		if err != nil {
+			log.Debug().Msgf("Progress buffer output: %s", progressBuf.String())
 			return cleanupPaths, err
 		}
 
@@ -129,12 +131,12 @@ func FetchEntry(conf Conf, entry AddonEntry) ([]string, error) {
 		}
 		defer fp.Close()
 
-		log.Printf("Writing %s to %s", entry.Zip, writePath)
+		log.Debug().Msgf("Writing %s to %s", entry.Zip, writePath)
 		writtenBytes, err := io.Copy(fp, resp.Body)
 		if err != nil {
 			return cleanupPaths, err
 		}
-		log.Printf("Wrote %d bytes", writtenBytes)
+		log.Debug().Msgf("Wrote %d bytes", writtenBytes)
 		cleanupPaths = append(cleanupPaths, writePath)
 
 		destDir, err := conf.DestDir(entry)
@@ -151,7 +153,7 @@ func FetchEntry(conf Conf, entry AddonEntry) ([]string, error) {
 			return cleanupPaths, err
 		}
 
-		log.Println("Extraction complete.")
+		log.Debug().Msg("Extraction complete.")
 		return cleanupPaths, nil
 	}
 
@@ -159,7 +161,7 @@ func FetchEntry(conf Conf, entry AddonEntry) ([]string, error) {
 }
 
 func UnpackEntry(conf Conf, entry AddonEntry) error {
-	log.Printf("Unpacking %+v", entry)
+	log.Debug().Msgf("Unpacking %+v", entry)
 	destDir, err := conf.DestDir(entry)
 	if err != nil {
 		return err
@@ -173,7 +175,7 @@ func UnpackEntry(conf Conf, entry AddonEntry) error {
 	// find the .toc files that mark each addon directory root
 	err = filepath.WalkDir(destDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			log.Printf("walking error: %v", err)
+			log.Debug().Msgf("walking error: %v", err)
 			return err
 		}
 
@@ -190,7 +192,7 @@ func UnpackEntry(conf Conf, entry AddonEntry) error {
 		// Open the file for reading.
 		file, err := os.Open(path)
 		if err != nil {
-			log.Printf("Could not open file %s: %v", path, err)
+			log.Debug().Msgf("Could not open file %s: %v", path, err)
 			return nil // Continue walking
 		}
 		defer file.Close()
@@ -216,12 +218,12 @@ func UnpackEntry(conf Conf, entry AddonEntry) error {
 		}
 
 		if title == "" {
-			log.Printf("Could not parse title for %v", path)
+			log.Debug().Msgf("Could not parse title for %v", path)
 			return nil
 		}
 
 		if containsTitle && containsInterface {
-			log.Printf("Found valid TOC file %v", path)
+			log.Debug().Msgf("Found valid TOC file %v", path)
 
 			candidate := UnpackCandidate{
 				TOCFilePath: path,
@@ -232,7 +234,7 @@ func UnpackEntry(conf Conf, entry AddonEntry) error {
 
 		// Check for errors during scanning.
 		if err := scanner.Err(); err != nil {
-			log.Printf("Error scanning file %s: %v", path, err)
+			log.Debug().Msgf("Error scanning file %s: %v", path, err)
 		}
 
 		return nil
@@ -271,12 +273,12 @@ func UnpackEntry(conf Conf, entry AddonEntry) error {
 		unpackCandidateDepths[d] = len(components)
 	}
 
-	log.Printf("Unpack candidate depths %+v", unpackCandidateDepths)
+	log.Debug().Msgf("Unpack candidate depths %+v", unpackCandidateDepths)
 
 	minDepth := -1
 	for d, depth := range unpackCandidateDepths {
 		if minDepth == -1 || depth < minDepth {
-			log.Printf("Set min depth to %d for dir %v", depth, d)
+			log.Debug().Msgf("Set min depth to %d for dir %v", depth, d)
 			minDepth = depth
 			continue
 		}
@@ -292,7 +294,7 @@ func UnpackEntry(conf Conf, entry AddonEntry) error {
 		}
 	}
 
-	log.Printf("To unpack dirs %+v", toUnpack)
+	log.Debug().Msgf("To unpack dirs %+v", toUnpack)
 	for _, toc := range toUnpack {
 		tocDir := filepath.Dir(toc.TOCFilePath)
 		// the dest addon dir name and the toc file without extension must match
@@ -301,18 +303,18 @@ func UnpackEntry(conf Conf, entry AddonEntry) error {
 		destAddonName := strings.TrimSuffix(tocBaseFile, filepath.Ext(tocBaseFile))
 		destAddonDir := filepath.Join(conf.AddonsPath, destAddonName)
 
-		log.Printf("Removing dest dir %v", destAddonDir)
+		log.Debug().Msgf("Removing dest dir %v", destAddonDir)
 		err := os.RemoveAll(destAddonDir)
 		if err != nil {
 			return err
 		}
 
-		log.Printf("Making directories %v", destAddonDir)
+		log.Debug().Msgf("Making directories %v", destAddonDir)
 		err = os.MkdirAll(destAddonDir, 0755)
 		if err != nil {
 			return err
 		}
-		log.Printf("Copying %v to %v", tocDir, destAddonDir)
+		log.Debug().Msgf("Copying %v to %v", tocDir, destAddonDir)
 		err = util.CopyDir(destAddonDir, tocDir)
 		if err != nil {
 			return err
@@ -320,7 +322,7 @@ func UnpackEntry(conf Conf, entry AddonEntry) error {
 
 		// create a marker file
 		markerDest := filepath.Join(destAddonDir, MARKER)
-		log.Printf("Creating marker file %s", markerDest)
+		log.Debug().Msgf("Creating marker file %s", markerDest)
 		_, err = os.Create(markerDest)
 		if err != nil {
 			return err
@@ -332,7 +334,7 @@ func UnpackEntry(conf Conf, entry AddonEntry) error {
 
 func CleanDownload(conf Conf, cleanupPaths []string) error {
 	for _, d := range cleanupPaths {
-		log.Printf("Removing dir for clean up %v", d)
+		log.Debug().Msgf("Removing dir for clean up %v", d)
 		err := os.RemoveAll(d)
 		if err != nil {
 			return err
@@ -359,13 +361,13 @@ func RemoveNonBlizDirs(conf Conf) error {
 		}
 
 		markerFile := filepath.Join(dir, MARKER)
-		log.Printf("Checking for marker at %v", markerFile)
+		log.Debug().Msgf("Checking for marker at %v", markerFile)
 		exists, _ := util.FileExists(markerFile)
 		if !exists {
 			continue
 		}
 
-		log.Printf("Found marker dir for cleaning %v", dir)
+		log.Debug().Msgf("Found marker dir for cleaning %v", dir)
 
 		base := filepath.Base(dir)
 		shouldSkip := false
@@ -387,7 +389,7 @@ func RemoveNonBlizDirs(conf Conf) error {
 			continue
 		}
 
-		log.Printf("Removing marked dir %v", dir)
+		log.Debug().Msgf("Removing marked dir %v", dir)
 		err = os.RemoveAll(dir)
 		if err != nil {
 			return err
@@ -404,31 +406,39 @@ func Execute(conf Conf) error {
 	}
 
 	for _, entry := range conf.Addons {
-		log.Printf("Processing entry: %+v", entry)
+		log.Info().Msgf("Processing entry: %+v", entry)
 
 		// normalize name from Git and other keys
 		err := entry.Hydrate()
 		if err != nil {
-			return fmt.Errorf("error hydrating name %+v", entry)
+			log.Warn().Err(err).Msgf("error hydrating name, skipping: %+v", entry)
+			continue
 		}
 
 		if entry.UniqueName == "" {
-			return fmt.Errorf("entry name is empty %+v", entry)
+			log.Warn().Msgf("entry name is empty, skipping: %+v", entry)
+			continue
 		}
 
 		cleanUpPaths, err := FetchEntry(conf, entry)
-		defer CleanDownload(conf, cleanUpPaths)
+		defer func() {
+			err := CleanDownload(conf, cleanUpPaths)
+			if err != nil {
+				log.Error().Err(err).Msgf("error cleaning up download for entry %+v", entry)
+			}
+		}()
 		if err != nil {
-			log.Printf("error fetching entry: %+v, error: %v", entry, err)
+			log.Warn().Err(err).Msgf("error fetching entry: %+v, error: %v", entry, err)
 			continue
 		}
 
 		err = UnpackEntry(conf, entry)
 		if err != nil {
-			log.Printf("WARN: error unpacking entry: %+v, error: %v", entry, err)
+			log.Warn().Msgf("error unpacking entry: %+v, error: %v", entry, err)
 			continue
 		}
 
+		log.Info().Msgf("Done processing entry: %+v", entry)
 	}
 	return nil
 }

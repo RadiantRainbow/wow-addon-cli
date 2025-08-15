@@ -3,9 +3,10 @@ package util
 import (
 	"archive/zip"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
+
+	"github.com/rs/zerolog/log"
 )
 
 func Unzip(zipFilePath, destDir string) error {
@@ -24,7 +25,7 @@ func Unzip(zipFilePath, destDir string) error {
 		}
 
 		if err := os.MkdirAll(filepath.Dir(filePath), os.ModePerm); err != nil {
-			log.Fatal(err)
+			log.Fatal().Err(err)
 		}
 
 		outFile, err := os.Create(filePath)
@@ -43,7 +44,7 @@ func Unzip(zipFilePath, destDir string) error {
 		if err != nil {
 			return err
 		}
-		log.Printf("Extracted: %sn", filePath)
+		log.Debug().Msgf("Extracted: %sn", filePath)
 	}
 	return nil
 }
