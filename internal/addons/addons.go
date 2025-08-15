@@ -20,6 +20,7 @@ import (
 )
 
 const SEP = string(filepath.Separator)
+const MARKER = ".wow_addon_cli"
 
 type UnpackCandidate struct {
 	TOCFilePath string
@@ -316,6 +317,14 @@ func UnpackEntry(conf Conf, entry AddonEntry) error {
 		if err != nil {
 			return err
 		}
+
+		// create a marker file
+		markerDest := filepath.Join(destAddonDir, MARKER)
+		log.Printf("Creating marker file %s", markerDest)
+		_, err = os.Create(markerDest)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -349,6 +358,15 @@ func RemoveNonBlizDirs(conf Conf) error {
 			continue
 		}
 
+		markerFile := filepath.Join(dir, MARKER)
+		log.Printf("Checking for marker at %v", markerFile)
+		exists, _ := util.FileExists(markerFile)
+		if !exists {
+			continue
+		}
+
+		log.Printf("Found marker dir for cleaning %v", dir)
+
 		base := filepath.Base(dir)
 		shouldSkip := false
 		for _, prefix := range DefaultSkipCleanPrefixes {
@@ -369,7 +387,7 @@ func RemoveNonBlizDirs(conf Conf) error {
 			continue
 		}
 
-		log.Printf("Removing non bliz dir %v", dir)
+		log.Printf("Removing marked dir %v", dir)
 		err = os.RemoveAll(dir)
 		if err != nil {
 			return err
