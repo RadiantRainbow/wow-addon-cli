@@ -1,15 +1,12 @@
 package addons
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"io/fs"
 	"net/http"
 	"os"
-	"path"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
@@ -23,25 +20,39 @@ const SEP = string(filepath.Separator)
 const MARKER = ".wow_addon_cli"
 
 type UnpackCandidate struct {
-	TOCFilePath string
-	SrcPath     string
-	DstPath     string
-	Title       string
+	TOCFilePath    string
+	TOCFilePathDir string
+	Depth          int
+	Title          string
 }
 
 type AddonEntry struct {
-	Git        string
-	Zip        string
-	UniqueName string
+	// config strings
+	Git  string
+	Zip  string
+	Name string
 
-	// these will be unpacked later
-	UnpackMap  map[string]string
-	UnpackList []string
+	// hydrated later
+	UniqueName string
 }
 
 func (entry *AddonEntry) Hydrate() error {
 	entry.UniqueName = ksuid.New().String()
 	return nil
+}
+
+func (entry AddonEntry) CloneSubdirName() string {
+	// if entry name is specified, force it to be that!
+	if entry.Name != "" {
+		return entry.Name
+	}
+
+	ext := filepath.Ext(entry.Git)
+	if ext == ".git" {
+		return filepath.Base(strings.TrimSuffix(entry.Git, ext))
+	}
+
+	return filepath.Base(entry.Git)
 }
 
 type Conf struct {
@@ -57,47 +68,31 @@ var DefaultSkipCleanPrefixes = []string{
 	"Blizzard_",
 }
 
-// Where to clone a git repo. Also the final directory of the decompressed archive
-func (c Conf) DestDir(entry AddonEntry) (string, error) {
+// A unique download path subdir to put artifacts in
+func (c Conf) DownloadUniqueDir(entry AddonEntry) (string, error) {
 	// TODO check paths? absolute?
-	return path.Join(c.DownloadPath, entry.UniqueName), nil
+	return filepath.Join(c.DownloadPath, entry.UniqueName), nil
 }
 
 func (c Conf) DestZip(entry AddonEntry) (string, error) {
-	return path.Join(c.DownloadPath, entry.UniqueName) + ".zip", nil
-}
-
-// sanitizeTitle removes stuff like color strings
-// ex.
-// |cff33ffccpf|cffffffffUI
-// |cffff8000WOW-HC.com|r
-func sanitizeTitle(title string) string {
-	colorRegex := regexp.MustCompile(`\|cff[a-zA-Z0-9]{3,6}`)
-	colorRegexReset := regexp.MustCompile(`\|r`)
-	t := title
-	t = colorRegex.ReplaceAllString(t, "")
-	t = colorRegexReset.ReplaceAllString(t, "")
-
-	return t
-}
-
-// sanitizeTocLine removes invalid or bad characters that mess with regexes
-func sanitizeTocLine(l string) string {
-	l = strings.ReplaceAll(l, "\ufeff", "")
-	return l
+	return filepath.Join(c.DownloadPath, entry.UniqueName) + ".zip", nil
 }
 
 func FetchEntry(conf Conf, entry AddonEntry) ([]string, error) {
 	cleanupPaths := []string{}
-	destDir, err := conf.DestDir(entry)
+	downloadUniqueDir, err := conf.DownloadUniqueDir(entry)
+	if err != nil {
+		return cleanupPaths, err
+	}
+	err = os.MkdirAll(downloadUniqueDir, 0755)
 	if err != nil {
 		return cleanupPaths, err
 	}
 
-	cleanupPaths = append(cleanupPaths, destDir)
+	cleanupPaths = append(cleanupPaths, downloadUniqueDir)
 
 	if entry.Git != "" {
-		clonePath := destDir
+		clonePath := filepath.Join(downloadUniqueDir, entry.CloneSubdirName())
 		log.Debug().Msgf("Entry cloning git: %s to %s", entry.Git, clonePath)
 
 		progressBuf := new(strings.Builder)
@@ -145,14 +140,8 @@ func FetchEntry(conf Conf, entry AddonEntry) ([]string, error) {
 		log.Debug().Msgf("Wrote %d bytes", writtenBytes)
 		cleanupPaths = append(cleanupPaths, writePath)
 
-		destDir, err := conf.DestDir(entry)
-		if err != nil {
-			return cleanupPaths, err
-		}
-		err = os.MkdirAll(destDir, 0755)
-		if err != nil {
-			return cleanupPaths, err
-		}
+		// extract do the download unique dir
+		destDir := downloadUniqueDir
 
 		err = util.Unzip(writePath, destDir)
 		if err != nil {
@@ -168,18 +157,15 @@ func FetchEntry(conf Conf, entry AddonEntry) ([]string, error) {
 
 func UnpackEntry(conf Conf, entry AddonEntry) error {
 	log.Debug().Msgf("Unpacking %+v", entry)
-	destDir, err := conf.DestDir(entry)
+	downloadUniqueDir, err := conf.DownloadUniqueDir(entry)
 	if err != nil {
 		return err
 	}
 
-	tocFiles := []UnpackCandidate{}
-
-	regexTitle := regexp.MustCompile(`^\s*##\s*Title:\s*(.*)$`)
-	regexInterface := regexp.MustCompile(`^\s*##\s*Interface:.*$`)
+	tocFiles := []*TOCFile{}
 
 	// find the .toc files that mark each addon directory root
-	err = filepath.WalkDir(destDir, func(path string, d fs.DirEntry, err error) error {
+	err = filepath.WalkDir(downloadUniqueDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			log.Debug().Msgf("walking error: %v", err)
 			return err
@@ -195,60 +181,23 @@ func UnpackEntry(conf Conf, entry AddonEntry) error {
 			return nil
 		}
 
+		// enforce rule that <addon_name>/<addon_name>.toc - <addon_name> must match
+		//tocFileBasename := filepath.Base(path)
+		//tocFileBasename = strings.TrimSuffix(tocFileBasename, filepath.Ext(tocFileBasename))
+		//tocDirBasename := filepath.Base(filepath.Dir(path))
+		//if tocFileBasename != tocDirBasename {
+		//	log.Debug().Msgf("toc file %s does not match the name of the dir: %v", tocFileBasename, tocDirBasename)
+		//	return nil
+		//}
+
 		// Open the file for reading.
-		file, err := os.Open(path)
+		toc, err := BuildTOCFromFile(path)
 		if err != nil {
-			log.Debug().Msgf("Could not open file %s: %v", path, err)
-			return nil // Continue walking
-		}
-		defer file.Close()
-
-		scanner := bufio.NewScanner(file)
-		containsTitle := false
-		containsInterface := false
-
-		title := ""
-		for scanner.Scan() {
-			if containsTitle && containsInterface {
-				break
-			}
-
-			line := scanner.Text()
-			line = sanitizeTocLine(line)
-			if containsTitle == false {
-				matches := regexTitle.FindStringSubmatch(line)
-				if matches != nil {
-					containsTitle = true
-					title = sanitizeTitle(matches[1])
-				}
-			}
-
-			if containsInterface == false {
-				containsInterface = regexInterface.MatchString(line)
-			}
-		}
-
-		if title == "" {
-			log.Debug().Msgf("Could not parse title for %v", path)
+			log.Warn().Err(err).Msg("error building TOC file, keep walking")
 			return nil
 		}
 
-		if containsTitle && containsInterface {
-			log.Debug().Msgf("Found valid TOC file %v", path)
-
-			candidate := UnpackCandidate{
-				TOCFilePath: path,
-				Title:       title,
-			}
-			tocFiles = append(tocFiles, candidate)
-		} else {
-			log.Debug().Msgf("Potentially invalid TOC file contains title: %v contains interface: %v", containsTitle, containsInterface)
-		}
-
-		// Check for errors during scanning.
-		if err := scanner.Err(); err != nil {
-			log.Debug().Msgf("Error scanning file %s: %v", path, err)
-		}
+		tocFiles = append(tocFiles, toc)
 
 		return nil
 	})
@@ -264,35 +213,24 @@ func UnpackEntry(conf Conf, entry AddonEntry) error {
 	// find the "shallowest" .toc file which becomes the "root"
 	// all dirs in this root should be unpacked to target dir
 	// ex
-	// .downloads/Bagnon/Bagnon-3.3.5-main/Bagnon/Bagnon.toc
-	// .downloads/Bagnon/Bagnon-3.3.5-main/Bagnon/libs/LibStub/LibStub.toc
-	// .downloads/Bagnon/Bagnon-3.3.5-main/Bagnon_Config/Bagnon_Config.toc
-	// .downloads/Bagnon/Bagnon-3.3.5-main/Bagnon_Forever/Bagnon_Forever.toc
-	// .downloads/Bagnon/Bagnon-3.3.5-main/Bagnon_GuildBank/Bagnon_GuildBank.toc
-	// .downloads/Bagnon/Bagnon-3.3.5-main/Bagnon_Tooltips/Bagnon_Tooltips.toc
-	// .downloads/Bagnon/Bagnon-3.3.5-main/Bagnon_VoidStorage/Bagnon_VoidStorage.toc
-	unpackCandidateDirMap := map[string]UnpackCandidate{}
+	// .downloads/12345/Bagnon/Bagnon-3.3.5-main/Bagnon/Bagnon.toc
+	// .downloads/12345/Bagnon/Bagnon-3.3.5-main/Bagnon/libs/LibStub/LibStub.toc
+	// .downloads/12345/Bagnon/Bagnon-3.3.5-main/Bagnon_Config/Bagnon_Config.toc
+	// .downloads/12345/Bagnon/Bagnon-3.3.5-main/Bagnon_Forever/Bagnon_Forever.toc
+	// .downloads/12345/Bagnon/Bagnon-3.3.5-main/Bagnon_GuildBank/Bagnon_GuildBank.toc
+	// .downloads/12345/Bagnon/Bagnon-3.3.5-main/Bagnon_Tooltips/Bagnon_Tooltips.toc
+	// .downloads/12345/Bagnon/Bagnon-3.3.5-main/Bagnon_VoidStorage/Bagnon_VoidStorage.toc
+	//
+	//  or there could be two tocs in same dir
+	// .downloads/6789/Leatrix_Plus/Leatrix_Plus.toc
+	// .downloads/6789/Leatrix_Plus/Leatrix_Plus_Wrath.toc
 
-	toUnpack := []UnpackCandidate{}
-
-	for _, toc := range tocFiles {
-		tocDir := filepath.Dir(toc.TOCFilePath)
-		unpackCandidateDirMap[tocDir] = toc
-	}
-
-	unpackCandidateDepths := map[string]int{}
-	for d := range unpackCandidateDirMap {
-		components := strings.Split(filepath.Clean(d), SEP)
-		unpackCandidateDepths[d] = len(components)
-	}
-
-	log.Debug().Msgf("Unpack candidate depths %+v", unpackCandidateDepths)
+	minDepthTocs := []TOCFile{}
 
 	minDepth := -1
-	for d, depth := range unpackCandidateDepths {
-		if minDepth == -1 || depth < minDepth {
-			log.Debug().Msgf("Set min depth to %d for dir %v", depth, d)
-			minDepth = depth
+	for _, toc := range tocFiles {
+		if minDepth == -1 || toc.Depth < minDepth {
+			minDepth = toc.Depth
 			continue
 		}
 	}
@@ -301,23 +239,46 @@ func UnpackEntry(conf Conf, entry AddonEntry) error {
 		return fmt.Errorf("Could not deterine mindepth")
 	}
 
-	for d, depth := range unpackCandidateDepths {
-		if depth == minDepth {
-			toUnpack = append(toUnpack, unpackCandidateDirMap[d])
+	for _, toc := range tocFiles {
+		if toc.Depth == minDepth {
+			minDepthTocs = append(minDepthTocs, *toc)
 		}
 	}
 
-	log.Debug().Msgf("To unpack dirs %+v", toUnpack)
-	for _, toc := range toUnpack {
-		tocDir := filepath.Dir(toc.TOCFilePath)
-		// the dest addon dir name and the toc file without extension must match
-		// Something.toc -> AddOns/Something
-		tocBaseFile := filepath.Base(toc.TOCFilePath)
-		destAddonName := strings.TrimSuffix(tocBaseFile, filepath.Ext(tocBaseFile))
-		destAddonDir := filepath.Join(conf.AddonsPath, destAddonName)
+	log.Debug().Msgf("Min depth tocs %+v", minDepthTocs)
+
+	groups, err := GroupTOCFiles(minDepthTocs)
+	if err != nil {
+		return err
+	}
+
+	log.Debug().Msgf("To unpack toc groups %+v", groups)
+
+	// TODO only keep one of the to unpack entries
+	// the the dest addon name dir should be based on the entry's Name if it exists
+	// or the parent dir basename if it does not
+
+	for _, grp := range groups {
+		addonName, err := grp.AddonName()
+		if err != nil {
+			log.Warn().Err(err).Msg("Error getting addon name from group")
+			continue
+		}
+
+		if addonName == "" {
+			log.Warn().Msg("Empty addon name")
+			continue
+		}
+
+		destAddonDir := filepath.Join(conf.AddonsPath, addonName)
+		tocSrcDir, err := grp.Dir()
+		if err != nil {
+			log.Warn().Err(err).Msg("Could not get TOC dir")
+			continue
+		}
 
 		log.Debug().Msgf("Removing dest dir %v", destAddonDir)
-		err := os.RemoveAll(destAddonDir)
+		err = os.RemoveAll(destAddonDir)
 		if err != nil {
 			return err
 		}
@@ -327,8 +288,8 @@ func UnpackEntry(conf Conf, entry AddonEntry) error {
 		if err != nil {
 			return err
 		}
-		log.Debug().Msgf("Copying %v to %v", tocDir, destAddonDir)
-		err = util.CopyDir(destAddonDir, tocDir)
+		log.Debug().Msgf("Copying %v to %v", tocSrcDir, destAddonDir)
+		err = util.CopyDir(destAddonDir, tocSrcDir)
 		if err != nil {
 			return err
 		}

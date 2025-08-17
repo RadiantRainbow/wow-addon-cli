@@ -3,6 +3,8 @@ package util
 import (
 	"errors"
 	"os"
+	"path/filepath"
+	"strings"
 )
 
 func FileExists(filePath string) (bool, error) {
@@ -23,4 +25,8 @@ func IsDirectory(path string) (bool, error) {
 		return false, err
 	}
 	return fileInfo.IsDir(), err
+}
+
+func RemoveExt(path string) string {
+	return strings.TrimSuffix(path, filepath.Ext(path))
 }
