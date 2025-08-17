@@ -44,7 +44,7 @@ func Unzip(zipFilePath, destDir string) error {
 		if err != nil {
 			return err
 		}
-		log.Debug().Msgf("Extracted: %sn", filePath)
+		log.Debug().Msgf("Extracted: %s", filePath)
 	}
 	return nil
 }

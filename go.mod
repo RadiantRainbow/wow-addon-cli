@@ -5,6 +5,8 @@ go 1.24.5
 require (
 	github.com/BurntSushi/toml v1.5.0
 	github.com/go-git/go-git/v6 v6.0.0-20250728093604-6aaf1933ecab
+	github.com/rs/zerolog v1.34.0
+	github.com/segmentio/ksuid v1.0.4
 )
 
 require (
@@ -21,8 +23,6 @@ require (
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/pjbgf/sha1cd v0.4.0 // indirect
-	github.com/rs/zerolog v1.34.0 // indirect
-	github.com/segmentio/ksuid v1.0.4 // indirect
 	github.com/sergi/go-diff v1.4.0 // indirect
 	golang.org/x/crypto v0.40.0 // indirect
 	golang.org/x/exp v0.0.0-20250531010427-b6e5de432a8b // indirect

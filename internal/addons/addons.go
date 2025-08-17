@@ -67,11 +67,11 @@ func (c Conf) DestZip(entry AddonEntry) (string, error) {
 	return path.Join(c.DownloadPath, entry.UniqueName) + ".zip", nil
 }
 
+// sanitizeTitle removes stuff like color strings
+// ex.
+// |cff33ffccpf|cffffffffUI
+// |cffff8000WOW-HC.com|r
 func sanitizeTitle(title string) string {
-	// Remove color strings
-	// ex.
-	// |cff33ffccpf|cffffffffUI
-	// |cffff8000WOW-HC.com|r
 	colorRegex := regexp.MustCompile(`\|cff[a-zA-Z0-9]{3,6}`)
 	colorRegexReset := regexp.MustCompile(`\|r`)
 	t := title
@@ -79,6 +79,12 @@ func sanitizeTitle(title string) string {
 	t = colorRegexReset.ReplaceAllString(t, "")
 
 	return t
+}
+
+// sanitizeTocLine removes invalid or bad characters that mess with regexes
+func sanitizeTocLine(l string) string {
+	l = strings.ReplaceAll(l, "\ufeff", "")
+	return l
 }
 
 func FetchEntry(conf Conf, entry AddonEntry) ([]string, error) {
@@ -202,19 +208,26 @@ func UnpackEntry(conf Conf, entry AddonEntry) error {
 		containsInterface := false
 
 		title := ""
-		// TODO capture title and make it the dest dir for Addons
 		for scanner.Scan() {
+			if containsTitle && containsInterface {
+				break
+			}
+
 			line := scanner.Text()
-			matches := regexTitle.FindStringSubmatch(line)
-			if matches != nil {
-				containsTitle = true
-				title = sanitizeTitle(matches[1])
+			line = sanitizeTocLine(line)
+			if containsTitle == false {
+				matches := regexTitle.FindStringSubmatch(line)
+				if matches != nil {
+					containsTitle = true
+					title = sanitizeTitle(matches[1])
+				}
 			}
 
-			if containsInterface == false && regexInterface.MatchString(line) {
-				containsInterface = true
-			}
+			log.Debug().Msgf("TESTING %v line =>%v match =>%v", containsInterface, line, regexInterface.MatchString(line))
 
+			if containsInterface == false {
+				containsInterface = regexInterface.MatchString(line)
+			}
 		}
 
 		if title == "" {
@@ -230,6 +243,8 @@ func UnpackEntry(conf Conf, entry AddonEntry) error {
 				Title:       title,
 			}
 			tocFiles = append(tocFiles, candidate)
+		} else {
+			log.Debug().Msgf("Potentially invalid TOC file contains title: %v contains interface: %v", containsTitle, containsInterface)
 		}
 
 		// Check for errors during scanning.
