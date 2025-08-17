@@ -21,7 +21,17 @@ func main() {
 	flagDebug := flag.Bool("debug", false, "sets log level to debug")
 	flag.Parse()
 
-	consoleWriter := zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.Kitchen, NoColor: true}
+	timeFormat := time.Kitchen
+	consoleWriter := zerolog.ConsoleWriter{Out: os.Stderr}
+	// hack to change the default color of timestamps
+	consoleWriter.FormatTimestamp = func(i any) string {
+		t, err := time.Parse(time.RFC3339, i.(string))
+		if err != nil {
+			return "INVALID_TIMESTAMP"
+		}
+
+		return t.Format(timeFormat)
+	}
 
 	log.Logger = log.Output(consoleWriter)
 
