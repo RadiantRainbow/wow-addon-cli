@@ -196,6 +196,11 @@ func UnpackEntry(conf Conf, entry AddonEntry) error {
 			log.Warn().Err(err).Msg("error building TOC file, keep walking")
 			return nil
 		}
+		// TODO awkward use of nil and error. have to define what's skippable error
+		if toc == nil {
+			log.Warn().Msgf("skipped building toc file %+v", path)
+			return nil
+		}
 
 		tocFiles = append(tocFiles, toc)
 

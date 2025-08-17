@@ -152,7 +152,8 @@ func BuildTOCFromFile(path string) (*TOCFile, error) {
 	}
 
 	if !(containsTitle && containsInterface) {
-		return nil, fmt.Errorf("Invalid TOC file, does not contain interface or title")
+		log.Warn().Msgf("Invalid TOC file, does not contain interface or title %+v", path)
+		return nil, nil
 	}
 
 	d := filepath.Dir(path)
