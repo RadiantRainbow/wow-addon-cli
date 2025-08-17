@@ -5,6 +5,7 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,6 +31,7 @@ type AddonEntry struct {
 	// config strings
 	Git  string
 	Zip  string
+	Url  string
 	Name string
 
 	// hydrated later
@@ -38,6 +40,21 @@ type AddonEntry struct {
 
 func (entry *AddonEntry) Hydrate() error {
 	entry.UniqueName = ksuid.New().String()
+
+	if entry.Url != "" {
+		u, err := url.Parse(entry.Url)
+		if err != nil {
+			return err
+		}
+		ext := filepath.Ext(u.Path)
+		switch ext {
+		case ".git":
+			entry.Git = entry.Url
+		case ".zip":
+			entry.Zip = entry.Url
+		}
+	}
+
 	return nil
 }
 

@@ -12,12 +12,19 @@ Write a `config.toml`, put it in `AddOns` dir
 # skipcleanprefixes = ["WOW_HC"]
 
 [[addons]]
-git = "https://github.com/hypernormalisation/SwedgeTimer.git"
+# url will infer .git and .zip extensions
+url = "https://github.com/RichSteini/Bagnon-3.3.5.git"
 
 [[addons]]
+# url will infer .git and .zip extensions
+url = "https://github.com/Bennylavaa/pfQuest-epoch/archive/master.zip"
+
+[[addons]]
+# manually specify git
 git = "https://github.com/bkader/Dominos.git"
 
 [[addons]]
+# manually specify zip
 zip = "https://github.com/RichSteini/Bagnon-3.3.5/archive/refs/heads/main.zip"
 ```
 
