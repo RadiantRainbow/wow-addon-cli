@@ -223,8 +223,6 @@ func UnpackEntry(conf Conf, entry AddonEntry) error {
 				}
 			}
 
-			log.Debug().Msgf("TESTING %v line =>%v match =>%v", containsInterface, line, regexInterface.MatchString(line))
-
 			if containsInterface == false {
 				containsInterface = regexInterface.MatchString(line)
 			}
