@@ -40,6 +40,7 @@ type TOCFileGroup struct {
 var CLIENT_SUFFIXES = []string{
 	"_Wrath",
 	"_TBC",
+	"-tbc",
 	"_Vanilla",
 	"_Mainline",
 	"_Cata",
