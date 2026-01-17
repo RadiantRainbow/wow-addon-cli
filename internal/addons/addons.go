@@ -279,6 +279,7 @@ func UnpackEntry(conf Conf, entry AddonEntry) error {
 	// TODO only keep one of the to unpack entries
 	// the the dest addon name dir should be based on the entry's Name if it exists
 	// or the parent dir basename if it does not
+	// TODO possible to add some override from config?
 
 	for _, grp := range groups {
 		addonName, err := grp.AddonName()

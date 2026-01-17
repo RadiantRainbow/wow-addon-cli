@@ -195,11 +195,13 @@ func GroupTOCFiles(tocs []TOCFile) ([]TOCFileGroup, error) {
 
 		if ok {
 			grp.TOCFiles = append(grp.TOCFiles, toc)
+			// need to set back the grp after append
+			grpDirMap[toc.Dir] = grp
 		}
 	}
 
-	for _, grp := range grpDirMap {
-		groups = append(groups, grp)
+	for _, g := range grpDirMap {
+		groups = append(groups, g)
 	}
 	return groups, nil
 }
