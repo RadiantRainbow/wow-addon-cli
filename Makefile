@@ -1,4 +1,4 @@
-GO_SRC := $(shell find . -name *.go)
+GO_SRC := $(shell find . -name '*.go')
 GO_PREREQS := $(GO_SRC) go.mod go.sum
 GO_PREREQS_TEST := $(GO_PREREQS) .cache/test
 
